@@ -1,0 +1,6 @@
+{
+  "name": "Vamos Academy",
+  "description": "Adaptive educational app for students aged 6-19 in Tunisia, dynamically tailoring themes, UI, and content per age band.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

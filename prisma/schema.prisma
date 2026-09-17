@@ -1,0 +1,178 @@
+// Prisma schema for Vamos Academy EdTech Backend
+// Database: PostgreSQL or SQLite
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum AgeBand {
+  BAND_A // Ages 6-9  (The Explorers - Early Primary)
+  BAND_B // Ages 10-13 (The Adventurers - Upper Primary / Early Teen)
+  BAND_C // Ages 14-19 (The Scholars - High School & Baccalaureate)
+}
+
+enum CenterBranch {
+  TUNIS_CENTRAL
+  SOUSSE_SAHIL
+  SFAX_MEDINA
+  BIZERTE_NORTH
+}
+
+model Student {
+  id                 String       @id @default(uuid())
+  fullName           String
+  emailOrPhone       String       @unique
+  passwordHash       String
+  
+  // Birthday & Age Band progression fields
+  birthDate          DateTime
+  ageBand            AgeBand
+  lastComputedAge    Int
+  lastBandCheckAt    DateTime     @default(now())
+
+  // Child safety: Parent/Guardian contact required for students < 13
+  parentFullName     String?
+  parentContact      String?      // Email or phone of parent/guardian
+  parentConsentGiven Boolean      @default(false)
+
+  // Center enrollment
+  centerBranch       CenterBranch @default(TUNIS_CENTRAL)
+  centerStudentCode  String       @unique
+  avatarSeed         String       @default("default_avatar")
+  
+  // Gamification & Progress
+  currentStreakDays  Int          @default(0)
+  totalXpEarned      Int          @default(0)
+  starsCount         Int          @default(0)
+  currentLevel       Int          @default(1)
+
+  // Transitions & Promotions
+  hasPendingLevelUp  Boolean      @default(false)
+  previousBand       AgeBand?
+  levelUpAcknowledgedAt DateTime?
+
+  // Relations
+  studentLevels      StudentLevel[]
+  exerciseAttempts   ExerciseAttempt[]
+  gameSessions       GameSession[]
+
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([ageBand])
+  @@index([birthDate])
+  @@index([centerStudentCode])
+}
+
+model Subject {
+  id                 String       @id @default(uuid())
+  code               String       @unique // e.g. "MATH", "PHYSICS", "ARABIC", "FRENCH", "SCIENCE", "CS", "PHILOSOPHY"
+  name               String       // e.g. "Mathématiques", "Sciences Physiques"
+  description        String?
+  icon               String?      // Material symbol or emoji representation
+  targetBands        AgeBand[]    // Bands offering this subject
+  
+  exercises          Exercise[]
+  studentLevels      StudentLevel[]
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+}
+
+model StudentLevel {
+  id                 String       @id @default(uuid())
+  studentId          String
+  student            Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subjectId          String
+  subject            Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  
+  // Actual academic assessment level at the Vamos center (independent of pure age)
+  levelCode          String       // e.g. "LVL-1-DISCOVERY", "LVL-2-EXPLORER", "LVL-3-CHALLENGER", "LVL-4-BAC-ELITE"
+  levelNumber        Int          // 1 to 10 scale for progression
+  assessedGrade      String       // e.g. "6ème", "9ème", "3ème Math", "Bac Sciences"
+  diagnosedAt        DateTime     @default(now())
+  notes              String?
+
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@unique([studentId, subjectId])
+  @@index([studentId])
+  @@index([levelCode])
+}
+
+enum ExerciseType {
+  MULTIPLE_CHOICE
+  FILL_IN_THE_BLANK
+  MATCHING_PAIRS
+  SHORT_ANSWER
+}
+
+model Exercise {
+  id                 String          @id @default(uuid())
+  subjectId          String
+  subject            Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  
+  title              String
+  description        String?
+  targetBand         AgeBand         // BAND_A, BAND_B, BAND_C
+  minAcademicLevel   Int             @default(1) // Center academic level required (1-10)
+  levelCode          String          @default("LVL-1") // Maps to StudentLevel.levelCode
+  exerciseType       ExerciseType
+  
+  // Prompt and interactive payload
+  promptText         String          // The question or instruction presented to the student
+  contentJson        String          // JSON storing options, blanks, pairs, or accepted answers
+  explanation        String          // Step-by-step pedagogic rationale shown in results/feedback
+  
+  pointsValue        Int             @default(10) // Base points / score
+  xpAwarded          Int             @default(50) // For Band B gamification
+  starsAwarded       Int             @default(3)  // For Band A rewards
+  estimatedDuration  Int             @default(180) // In seconds
+  
+  attempts           ExerciseAttempt[]
+
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@index([subjectId])
+  @@index([targetBand])
+  @@index([minAcademicLevel])
+  @@index([exerciseType])
+}
+
+model ExerciseAttempt {
+  id                 String       @id @default(uuid())
+  studentId          String
+  student            Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  exerciseId         String
+  exercise           Exercise     @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  
+  isCorrect          Boolean
+  timeTakenSeconds   Int          // Time spent in seconds on this attempt
+  studentAnswer      String       // Serialized answer (option ID, filled string, pair mappings, or text)
+  score              Int          // Points scored (0 to maxScore)
+  maxScore           Int          // Maximum possible score for this exercise
+  
+  completedAt        DateTime     @default(now())
+
+  @@index([studentId])
+  @@index([exerciseId])
+  @@index([completedAt])
+}
+
+model GameSession {
+  id                 String       @id @default(uuid())
+  studentId          String
+  student            Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  gameId             String
+  bandTarget         AgeBand
+  starsAwarded       Int
+  xpAwarded          Int
+  durationSeconds    Int
+  playedAt           DateTime     @default(now())
+}
